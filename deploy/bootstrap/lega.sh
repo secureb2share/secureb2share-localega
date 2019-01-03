@@ -76,18 +76,33 @@ keyserver_endpoint = https://keys:8443/retrieve/%s/private
 keyserver_endpoint = https://keys:8443/retrieve/%s/private
 EOF
 fi
-cat >> ${PRIVATE}/lega/conf.ini <<EOF
 
+if [[ $INBOX == 'mina' ]]; then # S3 backend for inbox
+cat >> ${PRIVATE}/lega/conf.ini <<EOF
 [inbox]
+driver = S3Storage
+url = http://inbox-backend:9000
+access_key = ${S3_ACCESS_KEY_INBOX}
+secret_key = ${S3_SECRET_KEY_INBOX}
+# region = lega
+EOF
+else # POSIX backend for inbox
+cat >> ${PRIVATE}/lega/conf.ini <<EOF
+[inbox]
+driver = FileStorage
 location = /ega/inbox/%s
 chroot_sessions = True
+EOF
+fi
 
+
+cat >> ${PRIVATE}/lega/conf.ini <<EOF
 [vault]
 driver = S3Storage
 url = http://vault:9000
 access_key = ${S3_ACCESS_KEY}
 secret_key = ${S3_SECRET_KEY}
-#region = lega
+# region = lega
 
 ## Connecting to Local EGA
 [broker]
@@ -234,6 +249,7 @@ EOF
 fi
 
 cat >> ${PRIVATE}/lega.yml <<EOF
+
   # Stable ID mapper
   finalize:
     depends_on:
@@ -330,6 +346,7 @@ cat >> ${PRIVATE}/lega.yml <<EOF
 
 EOF
 fi
+
 cat >> ${PRIVATE}/lega.yml <<EOF
   # Quality Control
   verify:
@@ -406,6 +423,31 @@ cat >> ${PRIVATE}/lega.yml <<EOF
     #   - "${DOCKER_PORT_s3}:9000"
     command: server /data
 
+EOF
+
+if [[ $INBOX == 'mina' ]]; then # S3 backend for inbox
+cat >> ${PRIVATE}/lega.yml <<EOF
+  # Inbox Storage backend: S3
+  inbox-backend:
+    hostname: inbox-backend
+    container_name: inbox-backend
+    labels:
+        lega_label: "inbox-backend"
+    image: minio/minio
+    environment:
+      - MINIO_ACCESS_KEY=${S3_ACCESS_KEY_INBOX}
+      - MINIO_SECRET_KEY=${S3_SECRET_KEY_INBOX}
+    volumes:
+      - inbox:/data
+    restart: on-failure:3
+    networks:
+      - lega
+    command: server /data
+
+EOF
+fi
+
+cat >> ${PRIVATE}/lega.yml <<EOF
 # Use the default driver for volume creation
 volumes:
   db:
@@ -441,6 +483,15 @@ CEGA_REST_PASSWORD        = ${CEGA_REST_PASSWORD}
 #
 S3_ACCESS_KEY             = ${S3_ACCESS_KEY}
 S3_SECRET_KEY             = ${S3_SECRET_KEY}
+#
+EOF
+if [[ $INBOX == 'mina' ]]; then # S3 backend for inbox
+cat >> ${PRIVATE}/lega/.trace <<EOF
+S3_ACCESS_KEY_INBOX       = ${S3_ACCESS_KEY_INBOX}
+S3_SECRET_KEY_INBOX       = ${S3_SECRET_KEY_INBOX}
+EOF
+fi
+cat >> ${PRIVATE}/lega/.trace <<EOF
 #
 DOCKER_PORT_inbox         = ${DOCKER_PORT_inbox}
 DOCKER_PORT_mq            = ${DOCKER_PORT_mq}
